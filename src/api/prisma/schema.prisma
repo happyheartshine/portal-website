@@ -1,0 +1,271 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and RBAC
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  role              UserRole  @default(EMPLOYEE)
+  ratePerOrder      Decimal?  @map("rate_per_order") @db.Decimal(10, 2)
+  isActive          Boolean   @default(true) @map("is_active")
+  passwordResetOtp  String?   @map("password_reset_otp")
+  passwordResetExpiry DateTime? @map("password_reset_expiry")
+  refreshToken      String?   @map("refresh_token")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  attendances            Attendance[]
+  dailyOrderSubmissions  DailyOrderSubmission[]
+  deductions             Deduction[]
+  warnings               Warning[]
+  couponsIssued          Coupon[]              @relation("CouponIssuedBy")
+  couponsUsed            Coupon[]              @relation("CouponUsedBy")
+  refundRequests         RefundRequest[]
+  refundRequestsProcessed RefundRequest[]      @relation("RefundRequestProcessedBy")
+  dailyOrdersApproved    DailyOrderSubmission[] @relation("DailyOrderApprovedBy")
+  deductionsIssued       Deduction[]          @relation("DeductionIssuedBy")
+  warningsIssued         Warning[]             @relation("WarningIssuedBy")
+  teamAsManager          TeamAssignment[]      @relation("TeamManager")
+  teamAsEmployee         TeamAssignment[]     @relation("TeamEmployee")
+  dataPurgeLogs          DataPurgeLog[]
+  auditLogsPerformed     AuditLog[]           @relation("AuditLogPerformedBy")
+  auditLogsTarget        AuditLog[]           @relation("AuditLogTargetUser")
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+enum UserRole {
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+// Attendance tracking
+model Attendance {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  timestamp DateTime
+  dateKey   String   @map("date_key") // YYYY-MM-DD format
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([userId])
+  @@index([dateKey])
+  @@index([userId, dateKey])
+  @@map("attendances")
+}
+
+// Daily order submissions
+model DailyOrderSubmission {
+  id            String              @id @default(cuid())
+  userId        String              @map("user_id")
+  dateKey       String              @map("date_key") // YYYY-MM-DD format
+  submittedCount Int                @map("submitted_count")
+  status        OrderSubmissionStatus @default(PENDING)
+  approvedCount Int?                @map("approved_count")
+  managerId     String?             @map("manager_id")
+  approvedAt    DateTime?          @map("approved_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  // Relations
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manager User? @relation("DailyOrderApprovedBy", fields: [managerId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, dateKey])
+  @@index([userId])
+  @@index([dateKey])
+  @@index([status])
+  @@index([userId, dateKey])
+  @@index([managerId])
+  @@map("daily_order_submissions")
+}
+
+enum OrderSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Deductions
+model Deduction {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  amount      Decimal  @db.Decimal(10, 2) // Must be positive
+  reason      String
+  sourceRole  UserRole @map("source_role")
+  sourceUserId String? @map("source_user_id")
+  warningId   String?  @unique @map("warning_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUser  User?    @relation("DeductionIssuedBy", fields: [sourceUserId], references: [id], onDelete: SetNull)
+  warning     Warning? @relation(fields: [warningId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([sourceUserId])
+  @@index([createdAt])
+  @@map("deductions")
+}
+
+// Warnings
+model Warning {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  reason         String
+  note           String?
+  sourceRole     UserRole @map("source_role")
+  sourceUserId   String?  @map("source_user_id")
+  deductionAmount Decimal? @map("deduction_amount") @db.Decimal(10, 2)
+  isRead         Boolean  @default(false) @map("is_read")
+  createdAt      DateTime @default(now()) @map("created_at")
+  readAt         DateTime? @map("read_at")
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUser User?      @relation("WarningIssuedBy", fields: [sourceUserId], references: [id], onDelete: SetNull)
+  deduction  Deduction?
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([sourceUserId])
+  @@map("warnings")
+}
+
+// Coupons
+model Coupon {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  issuedByUserId String       @map("issued_by_user_id")
+  issuedAt      DateTime      @map("issued_at")
+  customerName  String        @map("customer_name")
+  server        String
+  category      String
+  reason        String
+  zelleName     String        @map("zelle_name")
+  amount        Decimal       @db.Decimal(10, 2)
+  status        CouponStatus  @default(ISSUED)
+  usedByUserId  String?       @map("used_by_user_id")
+  usedAt        DateTime?     @map("used_at")
+
+  // Relations
+  issuedBy User  @relation("CouponIssuedBy", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+  usedBy   User? @relation("CouponUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([code])
+  @@index([status])
+  @@index([issuedByUserId])
+  @@index([usedByUserId])
+  @@index([issuedAt])
+  @@map("coupons")
+}
+
+enum CouponStatus {
+  ISSUED
+  USED
+}
+
+// Refund requests
+model RefundRequest {
+  id                String            @id @default(cuid())
+  requestedByUserId String            @map("requested_by_user_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  customerName      String            @map("customer_name")
+  zelleSenderName   String            @map("zelle_sender_name")
+  server             String
+  category           String
+  reason             String
+  amount             Decimal           @db.Decimal(10, 2)
+  screenshotUrl      String?          @map("screenshot_url")
+  status             RefundRequestStatus @default(PENDING)
+  processedByManagerId String?        @map("processed_by_manager_id")
+  processedAt        DateTime?        @map("processed_at")
+  archivedAt         DateTime?        @map("archived_at")
+
+  // Relations
+  requestedBy User  @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  processedBy User? @relation("RefundRequestProcessedBy", fields: [processedByManagerId], references: [id], onDelete: SetNull)
+
+  @@index([requestedByUserId])
+  @@index([status])
+  @@index([processedByManagerId])
+  @@index([createdAt])
+  @@map("refund_requests")
+}
+
+enum RefundRequestStatus {
+  PENDING
+  DONE
+  ARCHIVED
+}
+
+// Team assignments (for manager-employee relationships)
+model TeamAssignment {
+  managerId  String @map("manager_id")
+  employeeId String @map("employee_id")
+
+  // Relations
+  manager  User @relation("TeamManager", fields: [managerId], references: [id], onDelete: Cascade)
+  employee User @relation("TeamEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([managerId, employeeId])
+  @@index([managerId])
+  @@index([employeeId])
+  @@map("team_assignments")
+}
+
+// Data purge log
+model DataPurgeLog {
+  id              String   @id @default(cuid())
+  monthKey        String   @map("month_key") // YYYY-MM format
+  performedByAdminId String @map("performed_by_admin_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  tablesPurged    Json     @map("tables_purged") // Array of table names
+
+  // Relations
+  performedBy User @relation(fields: [performedByAdminId], references: [id], onDelete: Restrict)
+
+  @@index([monthKey])
+  @@index([performedByAdminId])
+  @@index([createdAt])
+  @@map("data_purge_logs")
+}
+
+// Audit log for admin actions
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // purge, warning_issued, refund_processed, etc.
+  performedByUserId String @map("performed_by_user_id")
+  targetUserId String? @map("target_user_id")
+  details   Json?    // Additional details
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  performedBy User @relation("AuditLogPerformedBy", fields: [performedByUserId], references: [id], onDelete: Restrict)
+  targetUser  User? @relation("AuditLogTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([performedByUserId])
+  @@index([targetUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
