@@ -32,3 +32,4 @@ FROM "User"
 WHERE "isActive" = true
 ORDER BY role;
 
+

@@ -124,3 +124,4 @@ Write-Host "   4. Should redirect to /admin/dashboard" -ForegroundColor White
 
 Write-Host "`n✅ Diagnostic complete!" -ForegroundColor Green
 
+

@@ -436,3 +436,4 @@ SELECT email, role FROM "User" ORDER BY role;
 
 See `check-users.sql` for verification queries.
 
+

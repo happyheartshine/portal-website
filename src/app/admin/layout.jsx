@@ -14,3 +14,4 @@ export default function AdminLayout({ children }) {
 
 AdminLayout.propTypes = { children: PropTypes.node };
 
+

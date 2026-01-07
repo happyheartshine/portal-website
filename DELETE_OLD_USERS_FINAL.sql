@@ -51,3 +51,4 @@ ORDER BY
 -- manager@portal.com   | Sample Manager  | MANAGER  | true | 5.0
 -- employee@portal.com  | Sample Employee | EMPLOYEE | true | 3.0
 
+

@@ -244,3 +244,4 @@ export default function ManagerAttendancePage() {
     </div>
   );
 }
+

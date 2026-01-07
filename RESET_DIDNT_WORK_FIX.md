@@ -356,3 +356,4 @@ DELETE FROM "User" WHERE email LIKE '%@example.com';
 
 **TL;DR:** Run the DELETE SQL in pgAdmin, then you can login! ✅
 
+

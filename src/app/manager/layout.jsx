@@ -14,3 +14,4 @@ export default function ManagerLayout({ children }) {
 
 ManagerLayout.propTypes = { children: PropTypes.node };
 
+

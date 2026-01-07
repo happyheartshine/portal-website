@@ -16,3 +16,4 @@ SELECT id, email, name, role, "isActive"
 FROM "User"
 ORDER BY role;
 
+
