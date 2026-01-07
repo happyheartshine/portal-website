@@ -45,7 +45,7 @@ export default function LoginPage() {
       } else {
         toast.error(result.error);
       }
-    } catch (_error) {
+    } catch {
       toast.error('An unexpected error occurred');
     } finally {
       setIsSubmitting(false);
