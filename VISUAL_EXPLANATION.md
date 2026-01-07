@@ -340,4 +340,7 @@ different emails than seed script!
 
 See `DATABASE_USER_MISMATCH_FIX.md` for complete guide.
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

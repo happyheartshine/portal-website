@@ -99,4 +99,7 @@ Don't manually create test users with different email patterns.
 
 **TL;DR:** Run `.\reset-database.ps1` to fix, then login with `admin@portal.com / admin123` ✅
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

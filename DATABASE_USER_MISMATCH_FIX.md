@@ -358,4 +358,7 @@ If you continue having issues:
 
 All credentials are now documented in `AUTH_QUICK_REFERENCE.md` 📚
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

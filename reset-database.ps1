@@ -25,4 +25,7 @@ Write-Host "Employee: employee@portal.com / employee123" -ForegroundColor White
 
 Set-Location ../..
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

@@ -25,4 +25,7 @@ ORDER BY role;
 -- Expected output:
 -- 3 users with @portal.com emails (ADMIN, MANAGER, EMPLOYEE)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

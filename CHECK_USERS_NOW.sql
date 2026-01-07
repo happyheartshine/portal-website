@@ -52,4 +52,7 @@ SELECT email, role, "isActive"
 FROM "User"
 WHERE role = 'ADMIN';
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

@@ -32,4 +32,7 @@ echo "Employee: employee@portal.com / employee123"
 
 cd ../..
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

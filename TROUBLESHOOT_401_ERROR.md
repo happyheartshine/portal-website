@@ -406,4 +406,7 @@ If nothing works, provide me with:
 
 **Most likely cause:** User doesn't exist or password hash is wrong. Run fresh seed! ✅
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9

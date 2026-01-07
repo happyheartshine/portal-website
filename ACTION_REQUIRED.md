@@ -170,4 +170,7 @@ npx prisma db seed
 
 **TL;DR:** Run `.\reset-database.ps1` then login with `admin@portal.com / admin123`
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2491ef18437c779306f2654bbcb73ada922063f9
