@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { employeeApi, managerApi } from '@/lib/apiClient';
 import toast from '@/lib/toast';
@@ -9,7 +9,7 @@ import { formatDateDisplay } from '@/utils/datetime';
 
 // ==============================|| COUPONS PAGE ||============================== //
 
-export default function CouponsPage() {
+function CouponsPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'generate');
   const [history, setHistory] = useState({ issued: [], honored: [] });
@@ -585,5 +585,23 @@ export default function CouponsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CouponsPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">Coupons</h1>
+          <p className="text-gray-500 mt-2">Generate and manage customer coupons</p>
+        </div>
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+        </div>
+      </div>
+    }>
+      <CouponsPageContent />
+    </Suspense>
   );
 }
