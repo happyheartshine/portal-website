@@ -55,8 +55,11 @@ export default function AdminUsersPage() {
     try {
       setSubmitting(true);
       const userData = {
-        ...formData,
-        salary: formData.salary ? parseFloat(formData.salary) : undefined
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        tempPassword: formData.password, // Backend expects tempPassword, not password
+        ratePerOrder: formData.salary ? parseFloat(formData.salary) : undefined // Backend expects ratePerOrder, not salary
       };
       
       await adminApi.createUser(userData);
@@ -191,7 +194,7 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {user.salary ? `$${user.salary.toFixed(2)}` : '-'}
+                    {user.ratePerOrder ? `$${Number(user.ratePerOrder).toFixed(2)}` : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {user.createdAt 
@@ -231,7 +234,7 @@ export default function AdminUsersPage() {
 
       {/* Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-gradient-to-br from-black/60 via-black/50 to-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
@@ -288,9 +291,9 @@ export default function AdminUsersPage() {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                     disabled={submitting}
-                    minLength={6}
+                    minLength={8}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                  <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
                 </div>
 
                 <div>

@@ -127,25 +127,19 @@ export default function Landing() {
                   src={DashboardImg}
                   alt="Portal Preview"
                   width={1200}
-                  height={700}
-                  className="w-full rounded-t-[14px] border-4 border-white shadow-[0px_-6px_10px_0px_rgba(12,21,70,0.03)]"
+                  height={600}
+                  className=" rounded-t-[14px] border-4 border-gray shadow-[0px_-6px_10px_0px_rgba(12,21,70,0.03)]"
+                  style={{ height: '600px', objectFit: 'cover' }}
                   priority
                 />
-                <div className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-xs font-semibold text-theme-sidebarbg backdrop-blur-sm">
+                <div className="absolute inset-0 rounded-t-[14px] bg-gradient-to-b from-transparent via-black/50 to-black/80 pointer-events-none z-[1]"></div>
+                <div className="absolute right-4 top-4 rounded-full bg-white/70 px-4 py-2 text-xs font-semibold text-theme-sidebarbg backdrop-blur-sm z-10">
                   Employee + Manager Portal
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <Image
-          src="/assets/images/landing/img-wave.svg"
-          alt="Wave"
-          width={1440}
-          height={100}
-          className="absolute right-0 bottom-0 left-0 z-10 w-full object-contain drop-shadow-[0px_-6px_10px_rgba(12,21,70,0.05)] dark:brightness-[0.1]"
-          priority
-        />
         <div className="absolute inset-0 z-[1] bg-[linear-gradient(0deg,rgba(0,0,0,0.5019607843),transparent)]"></div>
       </header>
 

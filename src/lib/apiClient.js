@@ -168,7 +168,7 @@ export const employeeApi = {
     }),
   searchRefunds: (q, amount, cursor, limit) =>
     api.get('/me/refunds/search', { params: { q, amount, cursor, limit } }),
-  confirmRefundInformed: (id) => api.post(`/me/refunds/${id}/confirm-informed`),
+  confirmRefundInformed: (id) => api.post(`/me/refunds/${id}/confirm-notified`),
 
   // Coupons
   generateCoupon: (data) => api.post('/me/coupons/generate', data),

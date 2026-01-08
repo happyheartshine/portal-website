@@ -71,7 +71,7 @@ export default function ManagerDeductionPage() {
     try {
       setSubmitting(true);
       await managerApi.createDeduction({
-        employeeId: parseInt(selectedEmployee),
+        employeeId: selectedEmployee, // Backend expects string, not number
         reasonKey: selectedReason,
         amountINR: amountNum
       });
