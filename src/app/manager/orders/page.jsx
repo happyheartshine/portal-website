@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { managerApi } from '@/lib/apiClient';
 import toast from '@/lib/toast';
-import { formatDateInput, formatDateDisplay } from '@/utils/datetime';
+import { formatDateDisplay } from '@/utils/datetime';
 
 // ==============================|| VERIFY ORDERS PAGE ||============================== //
 

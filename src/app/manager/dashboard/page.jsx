@@ -26,7 +26,7 @@ export default function ManagerDashboardPage() {
       setLoading(true);
       const response = await managerApi.getDashboardSummary();
       setSummary(response.data);
-    } catch (error) {
+    } catch {
       // Fallback to old endpoint if new one doesn't exist
       try {
         const fallbackResponse = await managerApi.getDashboardStats();
