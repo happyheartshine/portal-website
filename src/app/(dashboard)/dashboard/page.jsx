@@ -1,19 +1,35 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { employeeApi } from '@/lib/apiClient';
+import dynamic from 'next/dynamic';
+import { employeeApi, managerApi } from '@/lib/apiClient';
 import toast from '@/lib/toast';
+import { formatINR } from '@/utils/currency';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasRole } from '@/lib/auth';
+
+const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
 // ==============================|| EMPLOYEE DASHBOARD ||============================== //
 
 export default function EmployeeDashboard() {
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [dailyOrdersData, setDailyOrdersData] = useState(null);
+  const [monthlyOrdersData, setMonthlyOrdersData] = useState(null);
+
+  // Check if user can view analytics (MANAGER or ADMIN)
+  const canViewAnalytics = user && hasRole(user.role, ['MANAGER', 'ADMIN']);
 
   useEffect(() => {
     fetchDashboard();
-  }, [selectedMonth]);
+    // Only fetch analytics if user has permission
+    if (canViewAnalytics) {
+      fetchOrderGraphs();
+    }
+  }, [selectedMonth, canViewAnalytics]);
 
   const fetchDashboard = async () => {
     try {
@@ -25,6 +41,34 @@ export default function EmployeeDashboard() {
       console.error('Dashboard error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOrderGraphs = async () => {
+    try {
+      const [dailyRes, monthlyRes] = await Promise.all([
+        managerApi.getDailyOrdersThisMonth().catch(() => ({ data: null })),
+        managerApi.getMonthlyOrdersLast3().catch(() => ({ data: null }))
+      ]);
+      
+      // Transform daily orders data: { data: [{ date, count }] } -> { labels, values }
+      if (dailyRes.data?.data) {
+        setDailyOrdersData({
+          labels: dailyRes.data.data.map(item => item.date),
+          values: dailyRes.data.data.map(item => item.count)
+        });
+      }
+      
+      // Transform monthly orders data: { data: [{ month, label, count }] } -> { labels, values }
+      if (monthlyRes.data?.data) {
+        setMonthlyOrdersData({
+          labels: monthlyRes.data.data.map(item => item.label || item.month),
+          values: monthlyRes.data.data.map(item => item.count)
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load order graphs:', error);
+      // Silently fail - don't show error toast for analytics
     }
   };
 
@@ -70,7 +114,7 @@ export default function EmployeeDashboard() {
                 <h5 className="mb-0">Salary</h5>
                 <i className="ph ph-currency-dollar text-primary-500 text-2xl"></i>
               </div>
-              <h2 className="mb-2 text-3xl font-bold">${typeof dashboardData.salary === 'number' ? dashboardData.salary.toFixed(2) : (Number(dashboardData.salary) || 0).toFixed(2)}</h2>
+              <h2 className="mb-2 text-3xl font-bold">{formatINR(dashboardData.salary || 0)}</h2>
               <p className="mb-0 text-sm text-muted">Monthly Earnings</p>
             </div>
           </div>
@@ -84,7 +128,7 @@ export default function EmployeeDashboard() {
                 <h5 className="mb-0">Deductions</h5>
                 <i className="ph ph-minus-circle text-danger-500 text-2xl"></i>
               </div>
-              <h2 className="mb-2 text-3xl font-bold text-danger-500">-${typeof dashboardData.totalDeductions === 'number' ? dashboardData.totalDeductions.toFixed(2) : (Number(dashboardData.totalDeductions) || 0).toFixed(2)}</h2>
+              <h2 className="mb-2 text-3xl font-bold text-danger-500">-{formatINR(dashboardData.totalDeductions || 0)}</h2>
               <p className="mb-0 text-sm text-muted">Total Deducted</p>
             </div>
           </div>
@@ -138,7 +182,7 @@ export default function EmployeeDashboard() {
           </div>
         )}
 
-        {/* Quick Actions */}
+        {/* Quick Actions - Always visible above fold */}
         <div className="col-span-12">
           <div className="card">
             <div className="card-header">
@@ -154,18 +198,76 @@ export default function EmployeeDashboard() {
                   <i className="ph ph-shopping-cart"></i>
                   <span>Submit Orders</span>
                 </a>
-                <a href="/refunds" className="btn btn-outline-primary flex items-center justify-center gap-2">
-                  <i className="ph ph-receipt"></i>
-                  <span>Create Refund</span>
-                </a>
-                <a href="/coupons" className="btn btn-outline-primary flex items-center justify-center gap-2">
+                <a href="/coupons?tab=generate" className="btn btn-outline-primary flex items-center justify-center gap-2">
                   <i className="ph ph-ticket"></i>
-                  <span>Coupons</span>
+                  <span>Generate Coupon</span>
+                </a>
+                <a href="/refunds?tab=new" className="btn btn-outline-primary flex items-center justify-center gap-2">
+                  <i className="ph ph-receipt"></i>
+                  <span>New Refund</span>
                 </a>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Order Graphs - Only for MANAGER/ADMIN */}
+        {canViewAnalytics && (
+          <div className="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Ongoing Month Orders Graph */}
+            {dailyOrdersData && (
+              <div className="card">
+                <div className="card-header">
+                  <h5 className="mb-0">Ongoing Month Orders</h5>
+                </div>
+                <div className="card-body">
+                  <ReactApexChart
+                    options={{
+                      chart: { type: 'line', toolbar: { show: false } },
+                      xaxis: { 
+                        categories: dailyOrdersData.labels || [],
+                        title: { text: 'Day' }
+                      },
+                      yaxis: { title: { text: 'Order Count' } },
+                      title: { text: 'Daily Orders This Month', align: 'left' },
+                      dataLabels: { enabled: false },
+                      stroke: { curve: 'smooth' }
+                    }}
+                    series={[{ name: 'Orders', data: dailyOrdersData.values || [] }]}
+                    type="line"
+                    height={300}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Monthly Orders Graph */}
+            {monthlyOrdersData && (
+              <div className="card">
+                <div className="card-header">
+                  <h5 className="mb-0">Monthly Orders (Last 3 Months)</h5>
+                </div>
+                <div className="card-body">
+                  <ReactApexChart
+                    options={{
+                      chart: { type: 'bar', toolbar: { show: false } },
+                      xaxis: { 
+                        categories: monthlyOrdersData.labels || [],
+                        title: { text: 'Month' }
+                      },
+                      yaxis: { title: { text: 'Order Count' } },
+                      title: { text: 'Monthly Orders', align: 'left' },
+                      dataLabels: { enabled: true }
+                    }}
+                    series={[{ name: 'Orders', data: monthlyOrdersData.values || [] }]}
+                    type="bar"
+                    height={300}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

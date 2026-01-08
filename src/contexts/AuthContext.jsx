@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
   const router = useRouter();
 
   // Fetch user profile
-  const refreshUser = async () => {
+  const refreshUser = async (suppressErrors = false) => {
     try {
       const response = await authApi.getProfile();
       const userData = response.data;
@@ -33,7 +33,10 @@ export function AuthProvider({ children }) {
       setUser(userProfile);
       return userProfile;
     } catch (error) {
-      console.error('Failed to fetch user profile:', error);
+      // Only log error if not suppressed (e.g., during bootstrap with expired token)
+      if (!suppressErrors) {
+        console.error('Failed to fetch user profile:', error);
+      }
       // Only clear user if the error is auth-related (401)
       if (error.response?.status === 401) {
         setUser(null);
@@ -49,7 +52,8 @@ export function AuthProvider({ children }) {
       if (typeof window !== 'undefined') {
         const token = sessionStorage.getItem('access_token');
         if (token) {
-          await refreshUser();
+          // Suppress errors during bootstrap - expired tokens are expected
+          await refreshUser(true);
         }
       }
       setLoading(false);

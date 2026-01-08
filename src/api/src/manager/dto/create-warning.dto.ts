@@ -2,20 +2,15 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
 
 export class CreateWarningDto {
-  @ApiProperty({ description: 'User ID to issue warning to' })
+  @ApiProperty({ description: 'Employee ID to issue warning to' })
   @IsString()
   @IsNotEmpty()
-  userId: string;
+  employeeId: string;
 
-  @ApiProperty({ example: 'Late submission' })
+  @ApiProperty({ example: 'Late submission - Please submit on time' })
   @IsString()
   @IsNotEmpty()
-  reason: string;
-
-  @ApiProperty({ example: 'Please submit on time', required: false })
-  @IsString()
-  @IsOptional()
-  note?: string;
+  message: string;
 
   @ApiProperty({
     example: 10.0,

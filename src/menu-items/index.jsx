@@ -11,7 +11,10 @@ import adminMenu from './admin';
  * @returns {object} Menu items configuration
  */
 export default function getMenuItems(role) {
-  switch (role) {
+  // Normalize role to uppercase for case-insensitive matching
+  const normalizedRole = role ? String(role).toUpperCase() : '';
+  
+  switch (normalizedRole) {
     case 'ADMIN':
       return {
         items: [adminMenu]

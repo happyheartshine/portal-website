@@ -1,22 +1,47 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { employeeApi } from '@/lib/apiClient';
+import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import { employeeApi, managerApi } from '@/lib/apiClient';
 import toast from '@/lib/toast';
+import { nowIST, formatDateInput, formatDateDisplay } from '@/utils/datetime';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasRole } from '@/lib/auth';
+
+const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
 // ==============================|| ORDERS PAGE ||============================== //
 
 export default function OrdersPage() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [approvedOrders, setApprovedOrders] = useState([]);
+  const [approvedLoading, setApprovedLoading] = useState(false);
+  const [recentOrdersData, setRecentOrdersData] = useState(null);
+  const [hasMoreApproved, setHasMoreApproved] = useState(true);
+  const approvedCursorRef = useRef(null);
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(formatDateInput(nowIST()));
   const [submittedCount, setSubmittedCount] = useState(0);
+  const submitAreaRef = useRef(null);
+
+  // Check if user can view analytics (MANAGER or ADMIN)
+  const canViewAnalytics = user && hasRole(user.role, ['MANAGER', 'ADMIN']);
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+    fetchApprovedOrders();
+    // Only fetch analytics if user has permission
+    if (canViewAnalytics) {
+      fetchRecentOrdersGraph();
+    }
+    // Focus submit area if coming from dashboard
+    if (window.location.hash === '#submit') {
+      setTimeout(() => submitAreaRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  }, [canViewAnalytics]);
 
   const fetchOrders = async () => {
     try {
@@ -31,11 +56,48 @@ export default function OrdersPage() {
     }
   };
 
+  const fetchApprovedOrders = async (cursor = null) => {
+    try {
+      setApprovedLoading(true);
+      const response = await employeeApi.getApprovedOrders(cursor, 10);
+      const newOrders = response.data?.items || [];
+      setApprovedOrders(prev => cursor ? [...prev, ...newOrders] : newOrders);
+      approvedCursorRef.current = response.data?.nextCursor || null;
+      setHasMoreApproved(!!response.data?.nextCursor);
+    } catch (error) {
+      toast.error('Failed to load approved orders');
+      console.error('Approved orders error:', error);
+    } finally {
+      setApprovedLoading(false);
+    }
+  };
+
+  const fetchRecentOrdersGraph = async () => {
+    try {
+      const response = await managerApi.getDailyOrdersRecent(14);
+      // Transform API response { data: [{ date, count }] } to chart format
+      const chartData = response.data?.data || [];
+      setRecentOrdersData({
+        labels: chartData.map(item => item.date),
+        values: chartData.map(item => item.count)
+      });
+    } catch (error) {
+      console.error('Failed to load recent orders graph:', error);
+      // Silently fail - don't show error toast for analytics
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (submittedCount < 0) {
+    const count = parseInt(submittedCount);
+    if (isNaN(count) || count < 0) {
       toast.error('Count must be 0 or greater');
+      return;
+    }
+
+    if (!selectedDate) {
+      toast.error('Please select a date');
       return;
     }
 
@@ -43,13 +105,15 @@ export default function OrdersPage() {
       setSubmitting(true);
       await employeeApi.createOrder({
         dateKey: selectedDate,
-        submittedCount: parseInt(submittedCount)
+        submittedCount: count
       });
       toast.success('Order submitted successfully');
       fetchOrders();
       setSubmittedCount(0);
+      setSelectedDate(formatDateInput(nowIST()));
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to submit order');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to submit order';
+      toast.error(errorMessage);
       console.error('Submit order error:', error);
     } finally {
       setSubmitting(false);
@@ -75,7 +139,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Submit Order Form */}
-      <div className="card bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+      <div ref={submitAreaRef} className="card bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
         <h5 className="mb-4 text-lg font-semibold">Submit Order</h5>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -84,9 +148,10 @@ export default function OrdersPage() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)}
+              max={formatDateInput(nowIST())}
               className="form-control w-full p-2 border rounded"
             />
+            <p className="text-sm text-gray-500 mt-1">Selected: {formatDateDisplay(selectedDate)}</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">Submitted Count</label>
@@ -97,6 +162,7 @@ export default function OrdersPage() {
               disabled={!canEdit}
               min="0"
               className="form-control w-full p-2 border rounded disabled:bg-gray-100"
+              required
             />
             {selectedOrder && selectedOrder.status === 'APPROVED' && (
               <p className="text-sm text-red-500 mt-1">Cannot modify approved order</p>
@@ -124,11 +190,7 @@ export default function OrdersPage() {
               >
                 <div>
                   <span className="font-medium">
-                    {new Date(order.dateKey).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
+                    {formatDateDisplay(order.dateKey)}
                   </span>
                   <span
                     className={`ml-2 px-2 py-1 rounded text-xs ${
@@ -155,6 +217,66 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
+
+      {/* Approved Orders List */}
+      <div className="card bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+        <h5 className="mb-4 text-lg font-semibold">Previous Approved Orders</h5>
+        {approvedLoading && approvedOrders.length === 0 ? (
+          <div className="text-center py-4">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent mx-auto"></div>
+          </div>
+        ) : approvedOrders.length > 0 ? (
+          <div className="space-y-2">
+            {approvedOrders.map((order) => (
+              <div
+                key={order.id}
+                className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded"
+              >
+                <div>
+                  <span className="font-medium">{formatDateDisplay(order.dateKey || order.createdAt)}</span>
+                  <span className="ml-2 px-2 py-1 rounded text-xs bg-green-100 text-green-800">APPROVED</span>
+                </div>
+                <div className="text-right">
+                  <div>Count: {order.submittedCount || order.approvedCount || 0}</div>
+                </div>
+              </div>
+            ))}
+            {hasMoreApproved && (
+              <button
+                onClick={() => fetchApprovedOrders(approvedCursorRef.current)}
+                disabled={approvedLoading}
+                className="w-full mt-4 btn btn-outline-primary"
+              >
+                {approvedLoading ? 'Loading...' : 'Load More'}
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="text-center text-gray-500 py-4">No approved orders found</p>
+        )}
+      </div>
+
+      {/* Recent Days Orders Graph - Only for MANAGER/ADMIN */}
+      {canViewAnalytics && recentOrdersData && (
+        <div className="card bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h5 className="mb-4 text-lg font-semibold">Recent Days Orders (Last 14 Days)</h5>
+          <ReactApexChart
+            options={{
+              chart: { type: 'line', toolbar: { show: false } },
+              xaxis: { 
+                categories: recentOrdersData.labels || [],
+                title: { text: 'Date' }
+              },
+              yaxis: { title: { text: 'Order Count' } },
+              dataLabels: { enabled: false },
+              stroke: { curve: 'smooth' }
+            }}
+            series={[{ name: 'Orders', data: recentOrdersData.values || [] }]}
+            type="line"
+            height={250}
+          />
+        </div>
+      )}
     </div>
   );
 }

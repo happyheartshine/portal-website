@@ -68,8 +68,20 @@ export class AnalyticsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
-  async getOrderAnalytics(@Query('range') range?: TrendRange) {
-    const rangeValue = range || TrendRange.SEVEN_DAYS;
+  async getOrderAnalytics(@Query('range') range?: string) {
+    // Parse and validate the range parameter
+    let rangeValue: TrendRange = TrendRange.SEVEN_DAYS;
+    
+    if (range !== undefined && range !== null && range !== '') {
+      const parsedRange = parseInt(range, 10);
+      const validRanges = Object.values(TrendRange).filter(v => typeof v === 'number') as number[];
+      
+      if (!isNaN(parsedRange) && validRanges.includes(parsedRange)) {
+        rangeValue = parsedRange as TrendRange;
+      }
+      // If invalid, silently use default (SEVEN_DAYS)
+    }
+    
     return this.analyticsService.getOrderAnalytics(rangeValue);
   }
 

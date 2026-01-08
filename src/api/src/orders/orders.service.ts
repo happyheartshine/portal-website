@@ -123,5 +123,95 @@ export class OrdersService {
       endDate: endDateStr,
     };
   }
+
+  /**
+   * Get approved orders history with cursor pagination
+   * Returns only approved orders from prior days (and optionally today if approved)
+   */
+  async getApprovedOrders(cursor?: string, limit: number = 10) {
+    const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD in UTC (approximate)
+
+    // Build where clause: status APPROVED, dateKey < today (or include today if needed)
+    const where: any = {
+      status: 'APPROVED',
+      // Only include prior days (exclude today to show only historical)
+      dateKey: {
+        lt: todayKey,
+      },
+    };
+
+    // If cursor provided, decode it and add to where clause
+    // Cursor format: base64 encoded JSON with { dateKey, id }
+    if (cursor) {
+      try {
+        const cursorData = JSON.parse(
+          Buffer.from(cursor, 'base64').toString('utf-8'),
+        );
+        where.OR = [
+          {
+            dateKey: {
+              lt: cursorData.dateKey,
+            },
+          },
+          {
+            dateKey: cursorData.dateKey,
+            id: {
+              lt: cursorData.id,
+            },
+          },
+        ];
+      } catch (e) {
+        // Invalid cursor, ignore it
+      }
+    }
+
+    // Get one extra to check if there's a next page
+    const orders = await this.prisma.dailyOrderSubmission.findMany({
+      where,
+      select: {
+        id: true,
+        dateKey: true,
+        approvedCount: true,
+        status: true,
+      },
+      orderBy: [
+        {
+          dateKey: 'desc', // Most recent first
+        },
+        {
+          id: 'desc', // Secondary sort for consistency
+        },
+      ],
+      take: limit + 1,
+    });
+
+    const hasMore = orders.length > limit;
+    const items = hasMore ? orders.slice(0, limit) : orders;
+
+    // Transform to OrderSummary format
+    const orderSummaries = items.map((order) => ({
+      id: order.id,
+      date: order.dateKey,
+      count: order.approvedCount || 0,
+      total: order.approvedCount || 0,
+      status: order.status,
+    }));
+
+    // Next cursor is base64 encoded JSON with dateKey and id of the last item
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const cursorData = {
+        dateKey: lastItem.dateKey,
+        id: lastItem.id,
+      };
+      nextCursor = Buffer.from(JSON.stringify(cursorData)).toString('base64');
+    }
+
+    return {
+      items: orderSummaries,
+      nextCursor,
+    };
+  }
 }
 

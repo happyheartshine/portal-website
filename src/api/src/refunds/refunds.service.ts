@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRefundDto } from './dto/create-refund.dto';
+import { UpdateRefundDto } from './dto/update-refund.dto';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class RefundsService {
 
   /**
    * Create a refund request with screenshot upload
+   * Sets editableUntil = createdAt + 12 hours
    */
   async createRefundRequest(
     userId: string,
@@ -33,6 +35,9 @@ export class RefundsService {
       );
     }
 
+    const now = new Date();
+    const editableUntil = new Date(now.getTime() + 12 * 60 * 60 * 1000); // +12 hours
+
     return this.prisma.refundRequest.create({
       data: {
         requestedByUserId: userId,
@@ -44,14 +49,20 @@ export class RefundsService {
         amount: dto.amount,
         screenshotUrl,
         status: 'PENDING',
+        editableUntil,
       },
     });
   }
 
   /**
-   * Get refund requests with optional status filter
+   * Get refund requests with optional status filter and cursor pagination
    */
-  async getRefundRequests(userId: string, status?: string) {
+  async getRefundRequests(
+    userId: string,
+    status?: string,
+    cursor?: string,
+    limit: number = 10,
+  ) {
     const where: any = {
       requestedByUserId: userId,
     };
@@ -65,12 +76,253 @@ export class RefundsService {
       where.status = status.toUpperCase();
     }
 
-    return this.prisma.refundRequest.findMany({
+    // Cursor pagination
+    if (cursor) {
+      try {
+        const cursorData = JSON.parse(
+          Buffer.from(cursor, 'base64').toString('utf-8'),
+        );
+        where.OR = [
+          {
+            createdAt: {
+              lt: new Date(cursorData.createdAt),
+            },
+          },
+          {
+            createdAt: new Date(cursorData.createdAt),
+            id: {
+              lt: cursorData.id,
+            },
+          },
+        ];
+      } catch (e) {
+        // Invalid cursor, ignore it
+      }
+    }
+
+    const refunds = await this.prisma.refundRequest.findMany({
       where,
-      orderBy: {
-        createdAt: 'desc',
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'desc',
+        },
+      ],
+      take: limit + 1,
+    });
+
+    const hasMore = refunds.length > limit;
+    const items = hasMore ? refunds.slice(0, limit) : refunds;
+
+    // Add editable flag, refundedAmountUSD, and canArchive flag
+    const now = new Date();
+    const formattedItems = items.map((refund) => {
+      const requestedAmount = Number(refund.amount);
+      const refundedAmount = Number(refund.refundedAmountUSD || 0);
+      const isPartial = refundedAmount > 0 && refundedAmount < requestedAmount;
+      const isFullyRefunded = refundedAmount >= requestedAmount;
+      const canArchive =
+        refund.status === 'DONE' || (isFullyRefunded && refund.status !== 'ARCHIVED');
+
+      return {
+        ...refund,
+        requestedAmountUSD: requestedAmount,
+        refundedAmountUSD: refundedAmount,
+        isPartial,
+        canArchive,
+        editable:
+          refund.status === 'PENDING' && new Date(refund.editableUntil) > now,
+        editableUntil: refund.editableUntil.toISOString(),
+      };
+    });
+
+    // Next cursor
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const cursorData = {
+        createdAt: lastItem.createdAt.toISOString(),
+        id: lastItem.id,
+      };
+      nextCursor = Buffer.from(JSON.stringify(cursorData)).toString('base64');
+    }
+
+    return {
+      items: formattedItems,
+      nextCursor,
+    };
+  }
+
+  /**
+   * Update refund request (only pending + within 12h)
+   */
+  async updateRefund(
+    userId: string,
+    refundId: string,
+    dto: UpdateRefundDto,
+    screenshotFile?: Express.Multer.File,
+  ) {
+    const refund = await this.prisma.refundRequest.findUnique({
+      where: { id: refundId },
+    });
+
+    if (!refund) {
+      throw new NotFoundException('Refund request not found');
+    }
+
+    // Verify ownership
+    if (refund.requestedByUserId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Only allowed if status == PENDING
+    if (refund.status !== 'PENDING') {
+      throw new ForbiddenException(
+        'Can only update refunds with PENDING status',
+      );
+    }
+
+    // Check if still editable (within 12 hours)
+    const now = new Date();
+    if (now >= refund.editableUntil) {
+      throw new ForbiddenException(
+        'Refund can only be edited within 12 hours of creation',
+      );
+    }
+
+    let screenshotUrl = refund.screenshotUrl;
+    if (screenshotFile) {
+      screenshotUrl = await this.storageService.uploadFile(
+        screenshotFile,
+        'refunds',
+      );
+    }
+
+    return this.prisma.refundRequest.update({
+      where: { id: refundId },
+      data: {
+        customerName: dto.customerName,
+        zelleSenderName: dto.zelleSenderName,
+        server: dto.server,
+        category: dto.category,
+        reason: dto.reason,
+        amount: dto.amount,
+        screenshotUrl,
       },
     });
+  }
+
+  /**
+   * Search refunds across statuses
+   */
+  async searchRefunds(
+    userId: string,
+    q?: string,
+    amount?: string,
+    cursor?: string,
+    limit: number = 10,
+  ) {
+    const where: any = {
+      requestedByUserId: userId,
+    };
+
+    if (q) {
+      where.customerName = {
+        contains: q,
+        mode: 'insensitive',
+      };
+    }
+
+    if (amount) {
+      const amountNum = parseFloat(amount);
+      if (!isNaN(amountNum)) {
+        where.amount = amountNum;
+      }
+    }
+
+    // Cursor pagination
+    if (cursor) {
+      try {
+        const cursorData = JSON.parse(
+          Buffer.from(cursor, 'base64').toString('utf-8'),
+        );
+        where.OR = [
+          {
+            createdAt: {
+              lt: new Date(cursorData.createdAt),
+            },
+          },
+          {
+            createdAt: new Date(cursorData.createdAt),
+            id: {
+              lt: cursorData.id,
+            },
+          },
+        ];
+      } catch (e) {
+        // Invalid cursor, ignore it
+      }
+    }
+
+    const refunds = await this.prisma.refundRequest.findMany({
+      where,
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'desc',
+        },
+      ],
+      take: limit + 1,
+    });
+
+    const hasMore = refunds.length > limit;
+    const items = hasMore ? refunds.slice(0, limit) : refunds;
+
+    // Add editable flag, refundedAmountUSD, and canArchive flag
+    const now = new Date();
+    const formattedItems = items.map((refund) => {
+      const requestedAmount = Number(refund.amount);
+      const refundedAmount = Number(refund.refundedAmountUSD || 0);
+      const isPartial = refundedAmount > 0 && refundedAmount < requestedAmount;
+      const isFullyRefunded = refundedAmount >= requestedAmount;
+      const canArchive =
+        refund.status === 'DONE' || (isFullyRefunded && refund.status !== 'ARCHIVED');
+
+      return {
+        id: refund.id,
+        customerName: refund.customerName,
+        amount: refund.amount,
+        requestedAmountUSD: requestedAmount,
+        refundedAmountUSD: refundedAmount,
+        isPartial,
+        canArchive,
+        status: refund.status,
+        createdAt: refund.createdAt,
+        editable:
+          refund.status === 'PENDING' && new Date(refund.editableUntil) > now,
+        editableUntil: refund.editableUntil.toISOString(),
+      };
+    });
+
+    // Next cursor
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const cursorData = {
+        createdAt: lastItem.createdAt.toISOString(),
+        id: lastItem.id,
+      };
+      nextCursor = Buffer.from(JSON.stringify(cursorData)).toString('base64');
+    }
+
+    return {
+      items: formattedItems,
+      nextCursor,
+    };
   }
 
   /**
@@ -91,18 +343,27 @@ export class RefundsService {
       throw new ForbiddenException('Access denied');
     }
 
-    // Only allow if status is DONE
-    if (refund.status !== 'DONE') {
-      throw new BadRequestException(
-        'Can only confirm informed for refunds with DONE status',
+    // Check if fully refunded
+    const requestedAmount = Number(refund.amount);
+    const refundedAmount = Number(refund.refundedAmountUSD || 0);
+    const isFullyRefunded = refundedAmount >= requestedAmount;
+
+    // Only allow if status is DONE OR if fully refunded
+    // Enforce: if partial, archive endpoint returns 403
+    if (refund.status !== 'DONE' && !isFullyRefunded) {
+      throw new ForbiddenException(
+        'Cannot archive refund until it is fully refunded. Partial amount refunded: ' +
+          `${refundedAmount} out of ${requestedAmount}`,
       );
     }
 
+    const now = new Date();
     return this.prisma.refundRequest.update({
       where: { id: refundId },
       data: {
         status: 'ARCHIVED',
-        archivedAt: new Date(),
+        employeeConfirmedAt: now,
+        archivedAt: now,
       },
     });
   }

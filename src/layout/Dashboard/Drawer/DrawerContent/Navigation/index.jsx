@@ -17,8 +17,8 @@ export default function Navigation({ selectedItems, setSelectedItems, setSelectT
   const [selectedID, setSelectedID] = useState('');
   const [selectedLevel, setSelectedLevel] = useState(0);
 
-  // Get menu items based on user role
-  const menuItems = user ? getMenuItems(user.role) : { items: [] };
+  // Get menu items based on user role (with fallback to EMPLOYEE if user not loaded yet)
+  const menuItems = getMenuItems(user?.role || 'EMPLOYEE');
 
   const lastItem = null;
   let lastItemIndex = menuItems.items.length - 1;

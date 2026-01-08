@@ -96,6 +96,22 @@ export default function NavGroup({
             parentId={currentItem.id}
           />
         );
+      case 'group':
+        // Handle nested groups recursively
+        return (
+          <NavGroup
+            key={key}
+            item={menuItem}
+            lastItem={lastItem}
+            remItems={remItems}
+            lastItemId={lastItemId}
+            setSelectedID={setSelectedID}
+            setSelectedItems={setSelectedItems}
+            selectedItems={selectedItems}
+            setSelectedLevel={setSelectedLevel}
+            selectedLevel={selectedLevel}
+          />
+        );
       case 'item':
         return <NavItem key={key} item={menuItem} level={1} />;
       default:

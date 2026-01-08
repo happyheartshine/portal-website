@@ -15,9 +15,9 @@ export default function Footer() {
                 target="_blank"
                 className="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500"
               >
-                CodedThemes
+                Employee
               </Link>
-              , Built with ♥ for a smoother web presence.
+              & Manager Portal
             </p>
           </div>
           <div className="col-span-12 my-1 md:col-span-6">

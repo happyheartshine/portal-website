@@ -1,11 +1,11 @@
-// Manager menu items
+// Manager menu items - Manager-only features
 const managerMenu = {
   id: 'manager',
   title: 'Manager',
   type: 'group',
   children: [
     {
-      id: 'manager-dashboard',
+      id: 'management-dashboard',
       title: 'Dashboard',
       type: 'item',
       url: '/manager/dashboard',
@@ -13,39 +13,39 @@ const managerMenu = {
       breadcrumbs: true
     },
     {
-      id: 'manager-orders',
-      title: 'Order Approvals',
+      id: 'management-orders',
+      title: 'Verify Orders',
       type: 'item',
       url: '/manager/orders',
       icon: 'ph ph-shopping-cart',
       breadcrumbs: true
     },
     {
-      id: 'manager-refunds',
-      title: 'Refund Processing',
+      id: 'management-refunds',
+      title: 'Process Refunds',
       type: 'item',
       url: '/manager/refunds',
       icon: 'ph ph-receipt',
       breadcrumbs: true
     },
     {
-      id: 'manager-attendance',
-      title: 'Team Attendance',
-      type: 'item',
-      url: '/manager/attendance',
-      icon: 'ph ph-calendar-check',
-      breadcrumbs: true
-    },
-    {
-      id: 'manager-discipline',
-      title: 'Issue Warning',
+      id: 'management-discipline',
+      title: 'Discipline',
       type: 'item',
       url: '/manager/discipline',
       icon: 'ph ph-warning',
       breadcrumbs: true
     },
     {
-      id: 'manager-coupon-audit',
+      id: 'management-deduction',
+      title: 'Deduction',
+      type: 'item',
+      url: '/manager/deduction',
+      icon: 'ph ph-minus-circle',
+      breadcrumbs: true
+    },
+    {
+      id: 'management-coupon-audit',
       title: 'Coupon Audit',
       type: 'item',
       url: '/manager/coupon-audit',

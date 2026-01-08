@@ -197,6 +197,78 @@ export class ManagerController {
     return this.managerService.processRefund(user.userId, refundId);
   }
 
+  @Get('warnings')
+  @ApiOperation({ summary: 'Get warnings issued by manager to their team' })
+  @ApiQuery({
+    name: 'tab',
+    required: false,
+    enum: ['recent', 'archive'],
+    description: 'Filter by tab (recent or archive)',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of items per page (default: 20)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of warnings with pagination',
+    schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              message: { type: 'string' },
+              reason: { type: 'string' },
+              note: { type: 'string', nullable: true },
+              employee: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  email: { type: 'string' },
+                },
+              },
+              employeeName: { type: 'string' },
+              createdAt: { type: 'string', format: 'date-time' },
+              readAt: { type: 'string', format: 'date-time', nullable: true },
+              archivedAt: { type: 'string', format: 'date-time', nullable: true },
+              isRead: { type: 'boolean' },
+              deductionAmount: { type: 'number', nullable: true },
+            },
+          },
+        },
+        nextCursor: { type: 'string', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Manager only' })
+  async getWarnings(
+    @CurrentUser() user: any,
+    @Query('tab') tab?: 'recent' | 'archive',
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 20;
+    return this.managerService.getWarnings(
+      user.userId,
+      tab || 'recent',
+      cursor,
+      limitNum,
+    );
+  }
+
   @Post('warnings')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Issue a warning to an employee (Manager only)' })

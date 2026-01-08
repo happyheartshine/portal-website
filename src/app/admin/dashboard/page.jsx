@@ -34,18 +34,23 @@ export default function AdminDashboardPage() {
       const [orders, refunds, credits, salary] = await Promise.all([
         adminApi.getOrderAnalytics(numericRange).catch(err => {
           console.error('Order analytics error:', err);
+          console.error('Error response:', err.response?.data);
+          console.error('Request params:', { range: numericRange });
           return { data: null };
         }),
         adminApi.getRefundAnalytics(selectedMonth, false).catch(err => {
           console.error('Refund analytics error:', err);
+          console.error('Error response:', err.response?.data);
           return { data: null };
         }),
         adminApi.getCreditAnalytics(selectedMonth).catch(err => {
           console.error('Credit analytics error:', err);
+          console.error('Error response:', err.response?.data);
           return { data: null };
         }),
         adminApi.getPendingSalary(selectedMonth).catch(err => {
           console.error('Pending salary error:', err);
+          console.error('Error response:', err.response?.data);
           return { data: null };
         })
       ]);

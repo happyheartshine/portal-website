@@ -2,7 +2,7 @@
 
 import PropTypes from 'prop-types';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // next
 import { usePathname } from 'next/navigation';
@@ -17,10 +17,17 @@ import Navigation from './Navigation';
 
 export default function DrawerContent({ selectedItems, setSelectedItems }) {
   const { user } = useAuth();
-  const menuItems = getMenuItems(user?.role || 'EMPLOYEE');
+  const menuItems = useMemo(() => getMenuItems(user?.role || 'EMPLOYEE'), [user?.role]);
   const [selectTab, setSelectTab] = useState(menuItems.items?.[0] || null);
 
   const pathname = usePathname();
+
+  // Update selectTab when user role changes
+  useEffect(() => {
+    if (menuItems.items?.length > 0) {
+      setSelectTab(menuItems.items[0]);
+    }
+  }, [menuItems.items]);
 
   const isActive = useCallback(
     (item) => {

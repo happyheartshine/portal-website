@@ -32,6 +32,7 @@ model User {
   warnings               Warning[]
   couponsIssued          Coupon[]              @relation("CouponIssuedBy")
   couponsUsed            Coupon[]              @relation("CouponUsedBy")
+  couponsCleared         CouponHistory[]       @relation("CouponClearedBy")
   refundRequests         RefundRequest[]
   refundRequestsProcessed RefundRequest[]      @relation("RefundRequestProcessedBy")
   dailyOrdersApproved    DailyOrderSubmission[] @relation("DailyOrderApprovedBy")
@@ -108,7 +109,7 @@ enum OrderSubmissionStatus {
 model Deduction {
   id          String   @id @default(cuid())
   userId      String   @map("user_id")
-  amount      Decimal  @db.Decimal(10, 2) // Must be positive
+  amount      Decimal  @db.Decimal(10, 2) // amountINR - Must be positive, stored in INR (₹)
   reason      String
   sourceRole  UserRole @map("source_role")
   sourceUserId String? @map("source_user_id")
@@ -138,6 +139,7 @@ model Warning {
   isRead         Boolean  @default(false) @map("is_read")
   createdAt      DateTime @default(now()) @map("created_at")
   readAt         DateTime? @map("read_at")
+  archivedAt     DateTime? @map("archived_at")
 
   // Relations
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -148,58 +150,87 @@ model Warning {
   @@index([isRead])
   @@index([createdAt])
   @@index([sourceUserId])
+  @@index([archivedAt])
   @@map("warnings")
 }
 
 // Coupons
 model Coupon {
-  id            String        @id @default(cuid())
-  code          String        @unique
-  issuedByUserId String       @map("issued_by_user_id")
-  issuedAt      DateTime      @map("issued_at")
-  customerName  String        @map("customer_name")
-  server        String
-  category      String
-  reason        String
-  zelleName     String        @map("zelle_name")
-  amount        Decimal       @db.Decimal(10, 2)
-  status        CouponStatus  @default(ISSUED)
-  usedByUserId  String?       @map("used_by_user_id")
-  usedAt        DateTime?     @map("used_at")
+  id                  String        @id @default(cuid())
+  code                String        @unique
+  issuedByUserId      String        @map("issued_by_user_id")
+  issuedAt            DateTime      @map("issued_at")
+  customerName        String        @map("customer_name")
+  server              String
+  category            String
+  reason              String
+  zelleName           String        @map("zelle_name")
+  amount              Decimal       @db.Decimal(10, 2) // originalAmountUSD
+  remainingBalance    Decimal       @db.Decimal(10, 2) // remainingBalanceUSD
+  expiresAt           DateTime      @map("expires_at")
+  status              CouponStatus  @default(ACTIVE)
+  usedByUserId        String?       @map("used_by_user_id")
+  usedAt              DateTime?     @map("used_at")
 
   // Relations
   issuedBy User  @relation("CouponIssuedBy", fields: [issuedByUserId], references: [id], onDelete: Restrict)
   usedBy   User? @relation("CouponUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  history  CouponHistory[]
 
   @@index([code])
   @@index([status])
   @@index([issuedByUserId])
   @@index([usedByUserId])
   @@index([issuedAt])
+  @@index([expiresAt])
   @@map("coupons")
 }
 
 enum CouponStatus {
-  ISSUED
+  ACTIVE
+  EXPIRED
   USED
+}
+
+// Coupon history for tracking balance clears
+model CouponHistory {
+  id                String   @id @default(cuid())
+  couponCode        String   @map("coupon_code")
+  clearedAt         DateTime @map("cleared_at")
+  clearedByUserId   String   @map("cleared_by_user_id")
+  clearedByName     String   @map("cleared_by_name")
+  clearedAmount     Decimal  @db.Decimal(10, 2) @map("cleared_amount")
+
+  // Relations
+  coupon    Coupon @relation(fields: [couponCode], references: [code], onDelete: Cascade)
+  clearedBy User   @relation("CouponClearedBy", fields: [clearedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([couponCode])
+  @@index([clearedAt])
+  @@index([clearedByUserId])
+  @@map("coupon_history")
 }
 
 // Refund requests
 model RefundRequest {
-  id                String            @id @default(cuid())
-  requestedByUserId String            @map("requested_by_user_id")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  customerName      String            @map("customer_name")
-  zelleSenderName   String            @map("zelle_sender_name")
-  server             String
-  category           String
-  reason             String
-  amount             Decimal           @db.Decimal(10, 2)
-  screenshotUrl      String?          @map("screenshot_url")
-  status             RefundRequestStatus @default(PENDING)
-  processedByManagerId String?        @map("processed_by_manager_id")
-  processedAt        DateTime?        @map("processed_at")
-  archivedAt         DateTime?        @map("archived_at")
+  id                  String            @id @default(cuid())
+  requestedByUserId   String            @map("requested_by_user_id")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  editableUntil       DateTime          @map("editable_until") // createdAt + 12 hours
+  customerName        String            @map("customer_name")
+  zelleSenderName     String            @map("zelle_sender_name")
+  server              String
+  category            String
+  reason              String
+  amount              Decimal           @db.Decimal(10, 2) // requestedAmountUSD
+  refundedAmountUSD   Decimal          @default(0) @db.Decimal(10, 2) @map("refunded_amount_usd")
+  screenshotUrl       String?           @map("screenshot_url")
+  status              RefundRequestStatus @default(PENDING)
+  processedByManagerId String?          @map("processed_by_manager_id")
+  processedAt         DateTime?         @map("processed_at")
+  fullyRefundedAt     DateTime?         @map("fully_refunded_at")
+  employeeConfirmedAt DateTime?         @map("employee_confirmed_at")
+  archivedAt          DateTime?        @map("archived_at")
 
   // Relations
   requestedBy User  @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
@@ -209,6 +240,7 @@ model RefundRequest {
   @@index([status])
   @@index([processedByManagerId])
   @@index([createdAt])
+  @@index([editableUntil])
   @@map("refund_requests")
 }
 

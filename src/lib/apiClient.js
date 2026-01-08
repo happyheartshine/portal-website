@@ -15,9 +15,16 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
-      const token = sessionStorage.getItem('access_token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      // Don't add Authorization header for public auth endpoints
+      const isPublicAuthEndpoint = config.url?.includes('/auth/login') || 
+                                   config.url?.includes('/auth/refresh') ||
+                                   config.url?.includes('/auth/reset');
+      
+      if (!isPublicAuthEndpoint) {
+        const token = sessionStorage.getItem('access_token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
     }
     return config;
@@ -33,15 +40,21 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 401 errors (token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Don't attempt token refresh for auth endpoints (login, refresh, password reset)
+    // These endpoints return 401 for invalid credentials, not expired tokens
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || 
+                           originalRequest.url?.includes('/auth/refresh') ||
+                           originalRequest.url?.includes('/auth/reset');
+
+    // Handle 401 errors (token expired) - but not for auth endpoints
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
 
       if (typeof window !== 'undefined') {
         const refreshToken = sessionStorage.getItem('refresh_token');
         
-        // Only attempt refresh if we have a refresh token and this isn't already a refresh request
-        if (refreshToken && !originalRequest.url.includes('/auth/refresh')) {
+        // Only attempt refresh if we have a refresh token
+        if (refreshToken) {
           try {
             // Use direct axios call to avoid interceptor recursion
             const response = await axios.post(
@@ -64,24 +77,21 @@ api.interceptors.response.use(
             return api(originalRequest);
           } catch (refreshError) {
             console.error('Token refresh failed:', refreshError);
-            // Refresh failed, clear tokens and redirect to login
+            // Refresh failed, clear tokens
             sessionStorage.removeItem('access_token');
             sessionStorage.removeItem('refresh_token');
             
-            // Avoid redirect if already on login page
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login';
-            }
-            return Promise.reject(refreshError);
+            // Don't redirect here - let components handle redirects
+            // This prevents interference with bootstrap and other error handling
+            return Promise.reject(error); // Return original error, not refresh error
           }
         } else {
-          // No refresh token or refresh endpoint itself failed
+          // No refresh token available, clear tokens
           sessionStorage.removeItem('access_token');
           sessionStorage.removeItem('refresh_token');
           
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
+          // Don't redirect here - let components handle redirects
+          // Return the original error so components can handle it
         }
       }
     }
@@ -142,19 +152,33 @@ export const employeeApi = {
   // Orders
   createOrder: (data) => api.post('/me/orders', data),
   getOrders: (month) => api.get('/me/orders', { params: { month } }),
+  getApprovedOrders: (cursor, limit) => 
+    api.get('/orders/approved', { params: { cursor, limit } }),
 
   // Refunds
   createRefund: (formData) =>
     api.post('/me/refunds', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }),
-  getRefunds: (status) => api.get('/me/refunds', { params: { status } }),
+  getRefunds: (status, cursor, limit) => 
+    api.get('/me/refunds', { params: { status, cursor, limit } }),
+  updateRefund: (id, formData) =>
+    api.put(`/me/refunds/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+  searchRefunds: (q, amount, cursor, limit) =>
+    api.get('/me/refunds/search', { params: { q, amount, cursor, limit } }),
   confirmRefundInformed: (id) => api.post(`/me/refunds/${id}/confirm-informed`),
 
   // Coupons
   generateCoupon: (data) => api.post('/me/coupons/generate', data),
   honorCoupon: (code) => api.post('/me/coupons/honor', { code }),
-  getCouponHistory: () => api.get('/me/coupons/history')
+  getCouponHistory: () => api.get('/me/coupons/history'),
+  getCoupon: (code) => api.get(`/coupons/${code}`),
+  sendCoupon: (code) => api.post(`/coupons/${code}/send`),
+  sendCouponCredit: (code) => api.post(`/coupons/${code}/send-credit`),
+  clearCouponBalance: (code, amount) => 
+    api.post(`/coupons/${code}/clear-full`, { amount })
 };
 
 // ==================== MANAGER API ====================
@@ -162,24 +186,62 @@ export const employeeApi = {
 export const managerApi = {
   // Dashboard
   getDashboardStats: () => api.get('/manager/dashboard/stats'),
+  getDashboardSummary: () => api.get('/management/dashboard/summary'),
+  getDailyOrdersThisMonth: () => api.get('/analytics/orders/daily-this-month'),
+  getMonthlyOrdersLast3: () => api.get('/analytics/orders/monthly-last-3'),
 
   // Orders
   getPendingOrders: () => api.get('/manager/orders/pending'),
+  getManagementOrders: (params) => 
+    api.get('/management/orders', { params }),
   approveOrder: (id, data) => api.post(`/manager/orders/${id}/approve`, data),
+  approveManagementOrder: (orderId) => 
+    api.post(`/management/orders/${orderId}/approve`),
+  getApprovedOrders: (cursor, limit) => 
+    api.get('/orders/approved', { params: { cursor, limit } }),
+  getDailyOrdersRecent: (days = 14) => 
+    api.get('/analytics/orders/daily-recent', { params: { days } }),
 
   // Refunds
   getPendingRefunds: () => api.get('/manager/refunds/pending'),
+  getRefunds: (status, cursor, limit) => 
+    api.get('/refunds', { params: { status, cursor, limit } }),
+  getManagementRefunds: (params) => 
+    api.get('/management/refunds', { params }),
+  searchRefunds: (q, amount, cursor, limit) =>
+    api.get('/refunds/search', { params: { q, amount, cursor, limit } }),
+  updateRefund: (id, formData) =>
+    api.put(`/refunds/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
   processRefund: (id) => api.post(`/manager/refunds/${id}/process`),
+  processManagementRefund: (refundId, data) => 
+    api.post(`/management/refunds/${refundId}/process`, data),
+  confirmRefundNotified: (id) => api.post(`/refunds/${id}/confirm-notified`),
 
   // Warnings
   issueWarning: (data) => api.post('/manager/warnings', data),
+  getWarnings: (params) => 
+    api.get('/manager/warnings', { params }),
+
+  // Employees
+  getEmployeeOptions: () => api.get('/employees/options'),
+
+  // Deductions
+  getDeductionReasons: () => api.get('/management/deductions/reasons'),
+  createDeduction: (data) => api.post('/management/deductions', data),
 
   // Attendance
   getTeamAttendanceToday: () => api.get('/manager/attendance/today'),
   getTeamAttendance: (date) => api.get('/manager/attendance', { params: { date } }),
 
   // Coupons
-  searchCoupon: (code) => api.get('/manager/coupons/search', { params: { code } })
+  searchCoupon: (code) => api.get('/manager/coupons/search', { params: { code } }),
+  getCoupon: (code) => api.get(`/coupons/${code}`),
+  sendCoupon: (code) => api.post(`/coupons/${code}/send`),
+  sendCouponCredit: (code) => api.post(`/coupons/${code}/send-credit`),
+  clearCouponBalance: (code, amount) => 
+    api.post(`/coupons/${code}/clear-full`, { amount })
 };
 
 // ==================== ADMIN API ====================
@@ -191,15 +253,43 @@ export const adminApi = {
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
 
   // Analytics
-  getOrderAnalytics: (range) => api.get('/admin/analytics/orders', { params: { range } }),
-  getRefundAnalytics: (month, byEmployee) =>
-    api.get('/admin/analytics/refunds', {
-      params: { month, byEmployee }
-    }),
-  getCreditAnalytics: (month) => api.get('/admin/analytics/credits', { params: { month } }),
+  getOrderAnalytics: (range) => {
+    const params = {};
+    if (range !== undefined && range !== null) {
+      params.range = range;
+    }
+    return api.get('/admin/analytics/orders', { params });
+  },
+  getRefundAnalytics: (month, byEmployee) => {
+    const params = {};
+    // Only include month if provided (backend will default to current month)
+    if (month !== undefined && month !== null && month !== '') {
+      params.month = month;
+    }
+    // Only include byEmployee if it's truthy (backend expects 'true' or '1' as string)
+    if (byEmployee) {
+      params.byEmployee = 'true';
+    }
+    return api.get('/admin/analytics/refunds', { params });
+  },
+  getCreditAnalytics: (month) => {
+    const params = {};
+    // Only include month if provided (backend will default to current month)
+    if (month !== undefined && month !== null && month !== '') {
+      params.month = month;
+    }
+    return api.get('/admin/analytics/credits', { params });
+  },
 
   // Liability
-  getPendingSalary: (month) => api.get('/admin/liability/pending-salary', { params: { month } }),
+  getPendingSalary: (month) => {
+    const params = {};
+    // Only include month if provided (backend will default to current month)
+    if (month !== undefined && month !== null && month !== '') {
+      params.month = month;
+    }
+    return api.get('/admin/liability/pending-salary', { params });
+  },
 
   // System
   purgeData: (monthKey) => api.post('/admin/purge', { monthKey }),

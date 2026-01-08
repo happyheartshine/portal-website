@@ -16,6 +16,9 @@ import { LiabilityModule } from './liability/liability.module';
 import { PurgeModule } from './purge/purge.module';
 import { AuditModule } from './audit/audit.module';
 import { ManagerModule } from './manager/manager.module';
+import { ManagementModule } from './management/management.module';
+import { WarningsModule } from './warnings/warnings.module';
+import { EmployeesModule } from './employees/employees.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @Module({
@@ -37,6 +40,9 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     PurgeModule,
     AuditModule,
     ManagerModule,
+    ManagementModule,
+    WarningsModule,
+    EmployeesModule,
   ],
   controllers: [AppController],
   providers: [

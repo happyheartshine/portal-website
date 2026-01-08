@@ -10,6 +10,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 // project imports
 import NavItem from './NavItem';
+import NavGroup from './NavGroup';
 import { useGetMenuMaster } from '@/api/menu';
 
 // ==============================|| NAVIGATION - COLLAPSE ||============================== //
@@ -100,6 +101,22 @@ export default function NavCollapse({ menu, level, parentId, setSelectedItems, s
             menu={item}
             level={level + 1}
             parentId={parentId}
+          />
+        );
+      case 'group':
+        // Handle nested groups
+        return (
+          <NavGroup
+            key={item.id}
+            item={item}
+            lastItem={null}
+            remItems={[]}
+            lastItemId={null}
+            setSelectedID={() => {}}
+            setSelectedItems={setSelectedItems}
+            selectedItems={selectedItems}
+            setSelectedLevel={setSelectedLevel}
+            selectedLevel={selectedLevel}
           />
         );
       case 'item':

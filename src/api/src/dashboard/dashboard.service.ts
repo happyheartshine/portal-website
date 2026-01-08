@@ -33,13 +33,55 @@ export class DashboardService {
       },
     });
 
-    // Get unread warnings count
-    const unreadWarnings = await this.prisma.warning.count({
+    // Get unread warnings count and recent warnings
+    const thirtyDaysAgo = new Date(
+      new Date().getTime() - 30 * 24 * 60 * 60 * 1000,
+    );
+
+    // Lazy-archive: Update warnings older than 30 days
+    await this.prisma.warning.updateMany({
+      where: {
+        userId,
+        createdAt: {
+          lte: thirtyDaysAgo,
+        },
+        archivedAt: null,
+      },
+      data: {
+        archivedAt: new Date(),
+      },
+    });
+
+    // Get recent unread warnings (not archived, within 30 days)
+    const recentWarnings = await this.prisma.warning.findMany({
       where: {
         userId,
         isRead: false,
+        archivedAt: null,
+        createdAt: {
+          gte: thirtyDaysAgo,
+        },
       },
+      select: {
+        id: true,
+        reason: true,
+        note: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 5, // Limit to 5 most recent for dashboard
     });
+
+    const unreadWarnings = recentWarnings.length;
+
+    // Format warnings for response
+    const warnings = recentWarnings.map((w) => ({
+      id: w.id,
+      message: w.reason + (w.note ? `: ${w.note}` : ''),
+      createdAt: w.createdAt,
+    }));
 
     return {
       month: monthKey,
@@ -48,6 +90,7 @@ export class DashboardService {
       approvedOrders: salaryData.approvedOrdersCount,
       ongoingRefunds,
       unreadWarnings,
+      warnings,
     };
   }
 

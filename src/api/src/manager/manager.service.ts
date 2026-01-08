@@ -287,17 +287,21 @@ export class ManagerService {
    * Enforces team scoping if assignments exist
    */
   async issueWarning(managerId: string, dto: CreateWarningDto) {
-    // Verify user exists and is active
+    // Verify employee exists and is active
     const targetUser = await this.prisma.user.findUnique({
-      where: { id: dto.userId },
+      where: { id: dto.employeeId },
     });
 
     if (!targetUser) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Employee not found');
     }
 
     if (!targetUser.isActive) {
-      throw new BadRequestException('Cannot issue warning to inactive user');
+      throw new BadRequestException('Cannot issue warning to inactive employee');
+    }
+
+    if (targetUser.role !== 'EMPLOYEE') {
+      throw new BadRequestException('Can only issue warnings to employees');
     }
 
     // Check team scoping
@@ -309,7 +313,7 @@ export class ManagerService {
     const hasAssignments = assignments.length > 0;
     if (hasAssignments) {
       const employeeIds = assignments.map((a) => a.employeeId);
-      if (!employeeIds.includes(dto.userId)) {
+      if (!employeeIds.includes(dto.employeeId)) {
         throw new ForbiddenException(
           'Cannot issue warning to employee outside your team',
         );
@@ -317,48 +321,31 @@ export class ManagerService {
     }
 
     // Create warning
+    // Store message as reason (note can be null)
     const warning = await this.prisma.warning.create({
       data: {
-        userId: dto.userId,
-        reason: dto.reason,
-        note: dto.note,
+        userId: dto.employeeId,
+        reason: dto.message,
+        note: null,
         sourceRole: UserRole.MANAGER,
         sourceUserId: managerId,
-        deductionAmount: dto.deductionAmount,
+        deductionAmount: null, // Deductions are created separately via /management/deductions
       },
     });
-
-    // Create deduction if amount provided
-    let deduction = null;
-    if (dto.deductionAmount && dto.deductionAmount > 0) {
-      deduction = await this.prisma.deduction.create({
-        data: {
-          userId: dto.userId,
-          amount: dto.deductionAmount,
-          reason: `Deduction from warning: ${dto.reason}`,
-          sourceRole: UserRole.MANAGER,
-          sourceUserId: managerId,
-          warningId: warning.id,
-        },
-      });
-    }
 
     // Audit log
     await this.auditService.log({
       action: 'warning_issued',
       performedByUserId: managerId,
-      targetUserId: dto.userId,
+      targetUserId: dto.employeeId,
       details: {
         warningId: warning.id,
-        reason: dto.reason,
-        deductionAmount: dto.deductionAmount,
-        deductionId: deduction?.id,
+        message: dto.message,
       },
     });
 
     return {
       warning,
-      deduction,
     };
   }
 
@@ -437,6 +424,202 @@ export class ManagerService {
         markedAt: attendance?.timestamp || null,
       };
     });
+  }
+
+  /**
+   * Get warnings issued by manager to their team
+   * Supports tab filtering (recent/archive) and cursor pagination
+   */
+  async getWarnings(
+    managerId: string,
+    tab: 'recent' | 'archive' = 'recent',
+    cursor?: string,
+    limit: number = 20,
+  ) {
+    // Check if manager has any team assignments
+    const assignments = await this.prisma.teamAssignment.findMany({
+      where: { managerId },
+      select: { employeeId: true },
+    });
+
+    const hasAssignments = assignments.length > 0;
+    let employeeIds: string[];
+
+    if (hasAssignments) {
+      employeeIds = assignments.map((a) => a.employeeId);
+    } else {
+      // If no assignments, get all employees
+      const allEmployees = await this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          role: UserRole.EMPLOYEE,
+        },
+        select: { id: true },
+      });
+      employeeIds = allEmployees.map((e) => e.id);
+    }
+
+    if (employeeIds.length === 0) {
+      return {
+        items: [],
+        nextCursor: null,
+      };
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Lazy-archive: Update warnings older than 30 days
+    await this.prisma.warning.updateMany({
+      where: {
+        userId: { in: employeeIds },
+        sourceUserId: managerId,
+        createdAt: {
+          lte: thirtyDaysAgo,
+        },
+        archivedAt: null,
+      },
+      data: {
+        archivedAt: now,
+      },
+    });
+
+    // Build base where clause - warnings issued by this manager to team members
+    const baseConditions = {
+      sourceUserId: managerId,
+      userId: { in: employeeIds },
+    };
+
+    let baseWhere: any;
+    if (tab === 'recent') {
+      // Recent: archivedAt IS NULL and createdAt within 30 days
+      baseWhere = {
+        ...baseConditions,
+        archivedAt: null,
+        createdAt: {
+          gte: thirtyDaysAgo,
+        },
+      };
+    } else {
+      // Archive: archivedAt IS NOT NULL OR createdAt older than 30 days
+      baseWhere = {
+        AND: [
+          baseConditions,
+          {
+            OR: [
+              {
+                archivedAt: {
+                  not: null,
+                },
+              },
+              {
+                createdAt: {
+                  lt: thirtyDaysAgo,
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    // Cursor pagination
+    let where: any = baseWhere;
+    if (cursor) {
+      try {
+        const cursorData = JSON.parse(
+          Buffer.from(cursor, 'base64').toString('utf-8'),
+        );
+        const cursorConditions = {
+          OR: [
+            {
+              createdAt: {
+                lt: new Date(cursorData.createdAt),
+              },
+            },
+            {
+              AND: [
+                {
+                  createdAt: {
+                    equals: new Date(cursorData.createdAt),
+                  },
+                },
+                {
+                  id: {
+                    lt: cursorData.id,
+                  },
+                },
+              ],
+            },
+          ],
+        };
+        where = {
+          AND: [baseWhere, cursorConditions],
+        };
+      } catch (e) {
+        // Invalid cursor, ignore it
+      }
+    }
+
+    const warnings = await this.prisma.warning.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'desc',
+        },
+      ],
+      take: limit + 1,
+    });
+
+    const hasMore = warnings.length > limit;
+    const items = hasMore ? warnings.slice(0, limit) : warnings;
+
+    // Format response
+    const formattedItems = items.map((warning) => ({
+      id: warning.id,
+      message: warning.reason,
+      reason: warning.reason,
+      note: warning.note,
+      employee: {
+        id: warning.user.id,
+        name: warning.user.name,
+        email: warning.user.email,
+      },
+      employeeName: warning.user.name,
+      createdAt: warning.createdAt,
+      readAt: warning.readAt,
+      archivedAt: warning.archivedAt,
+      isRead: warning.isRead,
+      deductionAmount: warning.deductionAmount,
+    }));
+
+    // Next cursor
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const cursorData = {
+        createdAt: lastItem.createdAt.toISOString(),
+        id: lastItem.id,
+      };
+      nextCursor = Buffer.from(JSON.stringify(cursorData)).toString('base64');
+    }
+
+    return {
+      items: formattedItems,
+      nextCursor,
+    };
   }
 
   /**

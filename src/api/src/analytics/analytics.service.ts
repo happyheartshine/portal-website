@@ -1,6 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import {
+  istNow,
+  istStartOfDay,
+  istStartOfMonth,
+  formatISTDate,
+  formatISTMonth,
+  istTodayKey,
+  istCurrentMonthKey,
+  parseISTDate,
+} from '../common/utils/ist-timezone.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -243,5 +253,199 @@ export class AnalyticsService {
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
     const day = String(date.getUTCDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Get daily orders for ongoing month (day 1..today inclusive, IST)
+   * Returns: { data: [{ date: "YYYY-MM-DD", count: number }] }
+   */
+  async getDailyOrdersThisMonth() {
+    const todayIST = istNow();
+    const monthStart = istStartOfMonth(todayIST);
+    const todayKey = istTodayKey();
+    const monthStartKey = formatISTDate(monthStart);
+
+    // Get all approved orders from month start to today (IST)
+    const orders = await this.prisma.dailyOrderSubmission.findMany({
+      where: {
+        status: 'APPROVED',
+        dateKey: {
+          gte: monthStartKey,
+          lte: todayKey,
+        },
+      },
+      select: {
+        dateKey: true,
+        approvedCount: true,
+      },
+    });
+
+    // Aggregate by date
+    const ordersByDate = new Map<string, number>();
+    orders.forEach((order) => {
+      const count = ordersByDate.get(order.dateKey) || 0;
+      ordersByDate.set(
+        order.dateKey,
+        count + (order.approvedCount || 0),
+      );
+    });
+
+    // Fill all dates from 1st to today with zero counts if missing
+    const data: Array<{ date: string; count: number }> = [];
+    const startDate = parseISTDate(monthStartKey);
+    const endDate = parseISTDate(todayKey);
+    const currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      const dateKey = formatISTDate(currentDate);
+      data.push({
+        date: dateKey,
+        count: ordersByDate.get(dateKey) || 0,
+      });
+      currentDate.setTime(currentDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return { data };
+  }
+
+  /**
+   * Get monthly orders for last 3 completed months
+   * Returns: { data: [{ month: "YYYY-MM", label: "Oct 2025", count: number }] }
+   */
+  async getMonthlyOrdersLast3() {
+    const todayIST = istNow();
+    const currentMonthKey = istCurrentMonthKey();
+    const [currentYear, currentMonth] = currentMonthKey.split('-').map(Number);
+
+    // Calculate last 3 completed months (not including current month)
+    const months: Array<{ month: string; label: string; startDate: string; endDate: string }> = [];
+    for (let i = 1; i <= 3; i++) {
+      let year = currentYear;
+      let month = currentMonth - i;
+      if (month <= 0) {
+        month += 12;
+        year -= 1;
+      }
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const monthStart = `${monthKey}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const monthEnd = `${monthKey}-${String(lastDay).padStart(2, '0')}`;
+
+      // Format label (e.g., "Oct 2025")
+      const monthNames = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      const label = `${monthNames[month - 1]} ${year}`;
+
+      months.push({
+        month: monthKey,
+        label,
+        startDate: monthStart,
+        endDate: monthEnd,
+      });
+    }
+
+    // Get orders for these months
+    const orders = await this.prisma.dailyOrderSubmission.findMany({
+      where: {
+        status: 'APPROVED',
+        dateKey: {
+          gte: months[2].startDate, // oldest month
+          lte: months[0].endDate, // newest month
+        },
+      },
+      select: {
+        dateKey: true,
+        approvedCount: true,
+      },
+    });
+
+    // Aggregate by month
+    const ordersByMonth = new Map<string, number>();
+    orders.forEach((order) => {
+      const monthKey = order.dateKey.substring(0, 7); // YYYY-MM
+      if (months.some((m) => m.month === monthKey)) {
+        const count = ordersByMonth.get(monthKey) || 0;
+        ordersByMonth.set(monthKey, count + (order.approvedCount || 0));
+      }
+    });
+
+    // Build response in reverse order (newest first)
+    const data = months.map((m) => ({
+      month: m.month,
+      label: m.label,
+      count: ordersByMonth.get(m.month) || 0,
+    }));
+
+    return { data };
+  }
+
+  /**
+   * Get recent daily orders trend (7-14 days, default 14)
+   * Returns: { data: [{ date: "YYYY-MM-DD", count: number }] }
+   */
+  async getDailyOrdersRecent(days: number = 14) {
+    if (days < 7 || days > 31) {
+      throw new BadRequestException('Days must be between 7 and 31');
+    }
+
+    const todayIST = istNow();
+    const todayKey = istTodayKey();
+    const startDate = new Date(todayIST);
+    startDate.setTime(startDate.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    const startKey = formatISTDate(startDate);
+
+    // Get all approved orders in range
+    const orders = await this.prisma.dailyOrderSubmission.findMany({
+      where: {
+        status: 'APPROVED',
+        dateKey: {
+          gte: startKey,
+          lte: todayKey,
+        },
+      },
+      select: {
+        dateKey: true,
+        approvedCount: true,
+      },
+    });
+
+    // Aggregate by date
+    const ordersByDate = new Map<string, number>();
+    orders.forEach((order) => {
+      const count = ordersByDate.get(order.dateKey) || 0;
+      ordersByDate.set(
+        order.dateKey,
+        count + (order.approvedCount || 0),
+      );
+    });
+
+    // Fill all dates in range with zero counts if missing
+    const data: Array<{ date: string; count: number }> = [];
+    const startDateParsed = parseISTDate(startKey);
+    const endDateParsed = parseISTDate(todayKey);
+    const currentDate = new Date(startDateParsed);
+
+    while (currentDate <= endDateParsed) {
+      const dateKey = formatISTDate(currentDate);
+      data.push({
+        date: dateKey,
+        count: ordersByDate.get(dateKey) || 0,
+      });
+      currentDate.setTime(currentDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return { data };
   }
 }

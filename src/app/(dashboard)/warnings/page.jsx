@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { employeeApi } from '@/lib/apiClient';
 import toast from '@/lib/toast';
+import { formatINR } from '@/utils/currency';
 
 // ==============================|| WARNINGS PAGE ||============================== //
 
@@ -97,7 +98,7 @@ export default function WarningsPage() {
                 </div>
                 {warning.deductionAmount && (
                   <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                    Deduction: ${Number(warning.deductionAmount).toFixed(2)}
+                    Deduction: {formatINR(Number(warning.deductionAmount))}
                   </p>
                 )}
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
@@ -128,7 +129,7 @@ export default function WarningsPage() {
                 </div>
                 {warning.deductionAmount && (
                   <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                    Deduction: ${Number(warning.deductionAmount).toFixed(2)}
+                    Deduction: {formatINR(Number(warning.deductionAmount))}
                   </p>
                 )}
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
