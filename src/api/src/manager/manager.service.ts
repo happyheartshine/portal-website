@@ -660,7 +660,10 @@ export class ManagerService {
       category: coupon.category,
       reason: coupon.reason,
       zelleName: coupon.zelleName,
-      amount: coupon.amount,
+      // Convert Decimal to number for frontend compatibility
+      amount: typeof coupon.amount === 'object' && coupon.amount?.toNumber 
+        ? coupon.amount.toNumber() 
+        : Number(coupon.amount),
       // Map status: USED -> HONORED for frontend
       status: coupon.status === 'USED' ? 'HONORED' : coupon.status,
       // Map issuedBy -> generatedBy, issuedAt -> createdAt
@@ -673,7 +676,10 @@ export class ManagerService {
       // Use reason as description (description field doesn't exist in schema)
       description: coupon.reason,
       // Map amount to discount (discount field doesn't exist, using amount)
-      discount: coupon.amount,
+      // Convert Decimal to number for frontend compatibility
+      discount: typeof coupon.amount === 'object' && coupon.amount?.toNumber 
+        ? coupon.amount.toNumber() 
+        : Number(coupon.amount),
       discountType: 'FIXED', // Coupons use fixed amount, not percentage
       // customerEmail doesn't exist in schema, but include customerName for reference
       customerEmail: null, // Not available in current schema

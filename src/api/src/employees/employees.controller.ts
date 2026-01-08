@@ -9,6 +9,7 @@ import { EmployeesService } from './employees.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 
 @ApiTags('employees')
@@ -37,8 +38,8 @@ export class EmployeesController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Manager/Admin only' })
-  async getOptions() {
-    return this.employeesService.getEmployeeOptions();
+  async getOptions(@CurrentUser() user: any) {
+    return this.employeesService.getEmployeeOptions(user.userId, user.role);
   }
 }
 

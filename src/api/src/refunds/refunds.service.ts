@@ -367,5 +367,93 @@ export class RefundsService {
       },
     });
   }
+
+  /**
+   * Confirm refund request is informed (move to ARCHIVED) - for managers
+   * Allows managers to confirm refunds for their team members
+   */
+  async confirmInformedForManager(managerId: string, refundId: string) {
+    const refund = await this.prisma.refundRequest.findUnique({
+      where: { id: refundId },
+      include: {
+        requestedBy: {
+          select: {
+            id: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!refund) {
+      throw new NotFoundException('Refund request not found');
+    }
+
+    // Check if refund is already archived
+    if (refund.status === 'ARCHIVED') {
+      throw new BadRequestException('Refund is already archived');
+    }
+
+    // Check if user is a manager
+    const manager = await this.prisma.user.findUnique({
+      where: { id: managerId },
+      select: { role: true },
+    });
+
+    if (!manager || manager.role !== 'MANAGER') {
+      throw new ForbiddenException('Only managers can use this endpoint');
+    }
+
+    // Check if refund belongs to manager's team
+    const assignments = await this.prisma.teamAssignment.findMany({
+      where: { managerId },
+      select: { employeeId: true },
+    });
+
+    const hasAssignments = assignments.length > 0;
+    let isTeamMember = false;
+
+    if (hasAssignments) {
+      // Check if refund requester is in manager's assigned team
+      isTeamMember = assignments.some(
+        (a) => a.employeeId === refund.requestedByUserId,
+      );
+    } else {
+      // If no assignments, manager can access all employees
+      // Add null check for requestedBy
+      if (!refund.requestedBy) {
+        throw new ForbiddenException('Access denied - refund requester not found');
+      }
+      isTeamMember = refund.requestedBy.role === 'EMPLOYEE';
+    }
+
+    if (!isTeamMember) {
+      throw new ForbiddenException('Access denied - refund does not belong to your team');
+    }
+
+    // Check if fully refunded
+    const requestedAmount = Number(refund.amount);
+    const refundedAmount = Number(refund.refundedAmountUSD || 0);
+    const isFullyRefunded = refundedAmount >= requestedAmount;
+
+    // Only allow if status is DONE OR if fully refunded
+    // Managers can archive refunds that are in DONE status, regardless of refunded amount
+    if (refund.status !== 'DONE' && !isFullyRefunded) {
+      throw new ForbiddenException(
+        `Cannot archive refund. Status: ${refund.status}, Refunded: ${refundedAmount} out of ${requestedAmount}. ` +
+          'Refund must be in DONE status or fully refunded to archive.',
+      );
+    }
+
+    const now = new Date();
+    return this.prisma.refundRequest.update({
+      where: { id: refundId },
+      data: {
+        status: 'ARCHIVED',
+        employeeConfirmedAt: now,
+        archivedAt: now,
+      },
+    });
+  }
 }
 

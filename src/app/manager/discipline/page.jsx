@@ -76,7 +76,7 @@ export default function ManagerDisciplinePage() {
     try {
       setSubmitting(true);
       await managerApi.issueWarning({
-        employeeId: parseInt(selectedEmployee),
+        employeeId: selectedEmployee,
         message: message.trim()
       });
       

@@ -27,10 +27,9 @@ export class AnalyticsService {
     const startDateStr = this.formatDateKey(startDate);
     const endDateStr = this.formatDateKey(endDate);
 
-    // Get all approved orders in range
-    const orders = await this.prisma.dailyOrderSubmission.findMany({
+    // Get all orders in range (all statuses)
+    const allOrders = await this.prisma.dailyOrderSubmission.findMany({
       where: {
-        status: 'APPROVED',
         dateKey: {
           gte: startDateStr,
           lte: endDateStr,
@@ -38,6 +37,8 @@ export class AnalyticsService {
       },
       select: {
         dateKey: true,
+        status: true,
+        submittedCount: true,
         approvedCount: true,
         userId: true,
         user: {
@@ -50,12 +51,31 @@ export class AnalyticsService {
       },
     });
 
+    // Calculate summary statistics
+    let totalOrders = 0;
+    let approvedOrders = 0;
+    let pendingOrders = 0;
+    let rejectedOrders = 0;
+
+    allOrders.forEach((order) => {
+      totalOrders += order.submittedCount || 0;
+      if (order.status === 'APPROVED') {
+        approvedOrders += order.approvedCount || 0;
+      } else if (order.status === 'PENDING') {
+        pendingOrders += order.submittedCount || 0;
+      } else if (order.status === 'REJECTED') {
+        rejectedOrders += order.submittedCount || 0;
+      }
+    });
+
     // Calculate totalOrdersSeries (sum approved orders per day)
     const ordersByDate = new Map<string, number>();
-    orders.forEach((order) => {
-      const count = ordersByDate.get(order.dateKey) || 0;
-      ordersByDate.set(order.dateKey, count + (order.approvedCount || 0));
-    });
+    allOrders
+      .filter((order) => order.status === 'APPROVED')
+      .forEach((order) => {
+        const count = ordersByDate.get(order.dateKey) || 0;
+        ordersByDate.set(order.dateKey, count + (order.approvedCount || 0));
+      });
 
     // Initialize all dates in range with 0
     const totalOrdersSeries: Array<{ date: string; total: number }> = [];
@@ -74,15 +94,17 @@ export class AnalyticsService {
       string,
       { name: string; email: string; total: number }
     >();
-    orders.forEach((order) => {
-      const existing = ordersByEmployee.get(order.userId) || {
-        name: order.user.name,
-        email: order.user.email,
-        total: 0,
-      };
-      existing.total += order.approvedCount || 0;
-      ordersByEmployee.set(order.userId, existing);
-    });
+    allOrders
+      .filter((order) => order.status === 'APPROVED')
+      .forEach((order) => {
+        const existing = ordersByEmployee.get(order.userId) || {
+          name: order.user.name,
+          email: order.user.email,
+          total: 0,
+        };
+        existing.total += order.approvedCount || 0;
+        ordersByEmployee.set(order.userId, existing);
+      });
 
     const perEmployeeBar = Array.from(ordersByEmployee.values()).map(
       (emp) => ({
@@ -93,6 +115,12 @@ export class AnalyticsService {
     );
 
     return {
+      // Summary stats for dashboard
+      totalOrders,
+      approvedOrders,
+      pendingOrders,
+      rejectedOrders,
+      // Detailed data for charts
       totalOrdersSeries,
       perEmployeeBar,
     };
@@ -115,6 +143,7 @@ export class AnalyticsService {
       },
       select: {
         amount: true,
+        status: true,
         requestedByUserId: true,
         requestedBy: byEmployee
           ? {
@@ -133,6 +162,15 @@ export class AnalyticsService {
     );
 
     const count = refunds.length;
+    const averageAmount =
+      count > 0 ? totalRefundsAmount.dividedBy(count) : new Decimal(0);
+
+    // Calculate byStatus breakdown
+    const byStatus: Record<string, number> = {};
+    refunds.forEach((refund) => {
+      const status = refund.status || 'UNKNOWN';
+      byStatus[status] = (byStatus[status] || 0) + 1;
+    });
 
     let byEmployeeData = null;
     if (byEmployee) {
@@ -162,7 +200,13 @@ export class AnalyticsService {
     }
 
     return {
-      totalRefundsAmount,
+      // Summary stats for dashboard (matching frontend expectations)
+      totalRefunds: count,
+      totalAmount: totalRefundsAmount.toNumber(),
+      averageAmount: averageAmount.toNumber(),
+      byStatus,
+      // Legacy fields for backward compatibility
+      totalRefundsAmount: totalRefundsAmount.toNumber(),
       count,
       byEmployee: byEmployeeData,
     };
@@ -213,8 +257,12 @@ export class AnalyticsService {
     );
 
     return {
-      totalIssuedAmount,
-      totalRedeemedAmount,
+      // Summary stats for dashboard (matching frontend expectations)
+      totalCredits: issuedCoupons.length,
+      totalAmount: totalIssuedAmount.toNumber(),
+      // Detailed stats
+      totalIssuedAmount: totalIssuedAmount.toNumber(),
+      totalRedeemedAmount: totalRedeemedAmount.toNumber(),
       issuedCount: issuedCoupons.length,
       redeemedCount: usedCoupons.length,
     };

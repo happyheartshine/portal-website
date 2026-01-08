@@ -59,10 +59,29 @@ export default function ManagerDashboardPage() {
         managerApi.getDailyOrdersThisMonth().catch(() => ({ data: null })),
         managerApi.getMonthlyOrdersLast3().catch(() => ({ data: null }))
       ]);
-      setDailyOrdersData(dailyRes.data);
-      setMonthlyOrdersData(monthlyRes.data);
+      
+      // Transform daily orders data: { data: [{ date, count }] } -> { labels, values }
+      if (dailyRes.data?.data) {
+        setDailyOrdersData({
+          labels: dailyRes.data.data.map(item => item.date),
+          values: dailyRes.data.data.map(item => item.count)
+        });
+      } else {
+        setDailyOrdersData(null);
+      }
+      
+      // Transform monthly orders data: { data: [{ month, label, count }] } -> { labels, values }
+      if (monthlyRes.data?.data) {
+        setMonthlyOrdersData({
+          labels: monthlyRes.data.data.map(item => item.label || item.month),
+          values: monthlyRes.data.data.map(item => item.count)
+        });
+      } else {
+        setMonthlyOrdersData(null);
+      }
     } catch (error) {
       console.error('Failed to load order graphs:', error);
+      // Silently fail - don't show error toast for analytics
     }
   };
 

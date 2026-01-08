@@ -28,6 +28,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreateRefundDto } from './dto/create-refund.dto';
 import { UpdateRefundDto } from './dto/update-refund.dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('refunds')
 @Controller('me/refunds')
@@ -287,6 +288,58 @@ export class RefundsController {
     @CurrentUser() user: any,
     @Param('id') refundId: string,
   ) {
+    return this.refundsService.confirmInformed(user.userId, refundId);
+  }
+}
+
+@ApiTags('refunds')
+@Controller('refunds')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class RefundsPublicController {
+  constructor(
+    private readonly refundsService: RefundsService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Post(':id/confirm-notified')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm refund request is notified (move to ARCHIVED) - Manager access',
+  })
+  @ApiParam({ name: 'id', description: 'Refund request ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Refund request archived successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: ['PENDING', 'DONE', 'ARCHIVED'] },
+        employeeConfirmedAt: { type: 'string', format: 'date-time' },
+        archivedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Refund not in DONE status' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiResponse({ status: 404, description: 'Refund request not found' })
+  async confirmNotified(
+    @CurrentUser() user: any,
+    @Param('id') refundId: string,
+  ) {
+    // Check if user is a manager, if so use manager method
+    const userRecord = await this.prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { role: true },
+    });
+
+    if (userRecord?.role === 'MANAGER') {
+      return this.refundsService.confirmInformedForManager(user.userId, refundId);
+    }
+
+    // Otherwise use regular employee method
     return this.refundsService.confirmInformed(user.userId, refundId);
   }
 }

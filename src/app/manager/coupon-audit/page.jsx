@@ -162,7 +162,7 @@ export default function ManagerCouponAuditPage() {
                         <span className="font-medium text-lg text-green-600">
                           {couponData.discountType === 'PERCENTAGE' 
                             ? `${couponData.discount}%`
-                            : `$${couponData.discount.toFixed(2)}`}
+                            : `$${typeof couponData.discount === 'number' ? couponData.discount.toFixed(2) : Number(couponData.discount || 0).toFixed(2)}`}
                         </span>
                       </div>
                     </div>
