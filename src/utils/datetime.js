@@ -22,8 +22,9 @@ export function nowIST() {
  * @returns {Date} Date object in IST
  */
 export function toIST(date) {
+  if (!date) return nowIST();
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return nowIST();
+  if (!d || isNaN(d.getTime())) return nowIST();
   
   const istOffset = 5.5 * 60 * 60 * 1000;
   const utc = d.getTime() + (d.getTimezoneOffset() * 60 * 1000);
@@ -36,8 +37,9 @@ export function toIST(date) {
  * @returns {string} Formatted date string
  */
 export function formatDateDisplay(date) {
+  if (!date) return '';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '';
+  if (!d || isNaN(d.getTime())) return '';
   
   const istDate = toIST(d);
   const day = istDate.getDate();
@@ -54,8 +56,12 @@ export function formatDateDisplay(date) {
  * @returns {string} Formatted date string for input[type="date"]
  */
 export function formatDateInput(date) {
+  if (!date) {
+    const now = nowIST();
+    return now.toISOString().slice(0, 10);
+  }
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) {
+  if (!d || isNaN(d.getTime())) {
     const now = nowIST();
     return now.toISOString().slice(0, 10);
   }
