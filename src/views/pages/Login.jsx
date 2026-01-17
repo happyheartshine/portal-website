@@ -45,7 +45,7 @@ export default function LoginPage() {
       } else {
         toast.error(result.error);
       }
-    } catch {
+    } catch (error) {
       toast.error('An unexpected error occurred');
     } finally {
       setIsSubmitting(false);
@@ -115,6 +115,20 @@ export default function LoginPage() {
                   </div>
                 </form>
 
+                <div className="mt-6 rounded-lg bg-gray-50 p-4">
+                  <p className="mb-2 text-xs font-semibold text-gray-600">Test Credentials:</p>
+                  <div className="space-y-1 text-xs text-gray-600">
+                    <p>
+                      <strong>Admin:</strong> admin@portal.com / admin123
+                    </p>
+                    <p>
+                      <strong>Manager:</strong> manager@portal.com / manager123
+                    </p>
+                    <p>
+                      <strong>Employee:</strong> employee@portal.com / employee123
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

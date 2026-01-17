@@ -81,8 +81,11 @@ api.interceptors.response.use(
             sessionStorage.removeItem('access_token');
             sessionStorage.removeItem('refresh_token');
             
-            // Don't redirect here - let components handle redirects
-            // This prevents interference with bootstrap and other error handling
+            // Redirect to login if we're in the browser
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+            
             return Promise.reject(error); // Return original error, not refresh error
           }
         } else {
@@ -90,8 +93,10 @@ api.interceptors.response.use(
           sessionStorage.removeItem('access_token');
           sessionStorage.removeItem('refresh_token');
           
-          // Don't redirect here - let components handle redirects
-          // Return the original error so components can handle it
+          // Redirect to login if we're in the browser
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
         }
       }
     }

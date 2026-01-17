@@ -13,7 +13,7 @@ const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
 // ==============================|| EMPLOYEE DASHBOARD ||============================== //
 
 export default function EmployeeDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -24,12 +24,17 @@ export default function EmployeeDashboard() {
   const canViewAnalytics = user && hasRole(user.role, ['MANAGER', 'ADMIN']);
 
   useEffect(() => {
+    // Don't fetch if auth is still loading or user is not authenticated
+    if (authLoading || !user) {
+      return;
+    }
+    
     fetchDashboard();
     // Only fetch analytics if user has permission
     if (canViewAnalytics) {
       fetchOrderGraphs();
     }
-  }, [selectedMonth, canViewAnalytics]);
+  }, [selectedMonth, canViewAnalytics, authLoading, user]);
 
   const fetchDashboard = async () => {
     try {
@@ -37,6 +42,12 @@ export default function EmployeeDashboard() {
       const response = await employeeApi.getDashboard(selectedMonth || undefined);
       setDashboardData(response.data);
     } catch (error) {
+      // Don't show error toast for 401 - it means user needs to login
+      if (error.response?.status === 401) {
+        console.error('Unauthorized - user needs to login');
+        // The auth interceptor will handle token refresh or redirect
+        return;
+      }
       toast.error('Failed to load dashboard data');
       console.error('Dashboard error:', error);
     } finally {
